@@ -380,6 +380,42 @@ pub fn notify_set(title: &str, body: &str) -> Vec<u8> {
     }
 }
 
+/// The program's status (OSC 7501) for the local terminal, which can show
+/// it as it would for a local program. It is built anew from the event's
+/// fields rather than passed through, so the host can only say what the
+/// protocol lets it: None for a state or id the protocol would ignore, and
+/// any other field that breaks its rules is left out.
+pub fn status_set(e: &osewa_wire::EventMsg) -> Option<Vec<u8>> {
+    use base64::Engine as _;
+    const STATES: [&str; 6] = ["idle", "working", "done", "blocked", "error", "clear"];
+    if !STATES.contains(&e.state.as_str()) {
+        return None;
+    }
+    let is_name = |s: &str| (1..=32).contains(&s.len()) && s.bytes().all(|b| b.is_ascii_alphanumeric() || b"_.+-".contains(&b));
+    let id_ok = e.id.is_empty() || (e.id.len() <= 128 && e.id.split('/').count() <= 8 && e.id.split('/').all(is_name));
+    if !id_ok {
+        return None;
+    }
+    let mut pairs = vec![format!("state={}", e.state)];
+    if !e.id.is_empty() {
+        pairs.push(format!("id={}", e.id));
+    }
+    if let Some(p) = e.progress.filter(|p| (0..=100).contains(p) && (e.state == "working" || e.state == "blocked")) {
+        pairs.push(format!("progress={p}"));
+    }
+    if is_name(&e.app) {
+        pairs.push(format!("app={}", e.app));
+    }
+    if !e.msg.is_empty() {
+        // Cut to the protocol's 2048 decoded bytes, at a character, and
+        // without controls, which would make the terminal refuse it.
+        let msg = String::from_utf8_lossy(&crate::vtfilter::strip_controls(e.msg.as_bytes())).into_owned();
+        let end = (0..=msg.len().min(2048)).rev().find(|&i| msg.is_char_boundary(i)).unwrap_or(0);
+        pairs.push(format!("msg={}", base64::engine::general_purpose::STANDARD.encode(&msg[..end])));
+    }
+    Some(format!("\x1b]7501;{}\x1b\\", pairs.join(":")).into_bytes())
+}
+
 /// OSC 52 that puts data on the local clipboard. The remote's selection
 /// target isn't carried, so it is always the clipboard.
 pub fn clipboard_set(data: &[u8]) -> Vec<u8> {

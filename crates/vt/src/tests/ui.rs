@@ -99,6 +99,22 @@ fn notify_events_notify_locally() {
     assert_eq!(out.string(), "\x1b]9;done\x1b\\\x1b]777;notify;CI, main;all\\ green\x1b\\");
 }
 
+/// A live status reaches the local terminal as OSC 7501, so it can show the
+/// program as it would a local one, even with notices off; catch-up ones
+/// don't.
+#[test]
+fn status_events_report_locally() {
+    use osewa_mirror::{Predictor, PredictorConfig};
+    let out = Buf::default();
+    let a = Attached::new(Ui::new(Box::new(out.clone()), true, Predictor::new(PredictorConfig::default())), "me".into());
+    let status = |state: &str| osewa_wire::EventMsg { state: state.into(), app: "fx".into(), ..osewa_wire::EventMsg::kind(osewa_wire::EVENT_STATUS) };
+    a.m.event(&status("done"), false).unwrap();
+    assert_eq!(out.string(), "", "a catch-up status was reported");
+    a.m.event(&osewa_wire::EventMsg { msg: "Apply?".into(), ..status("blocked") }, true).unwrap();
+    a.m.event(&status("clear"), true).unwrap();
+    assert_eq!(out.string(), "\x1b]7501;state=blocked:app=fx:msg=QXBwbHk/\x1b\\\x1b]7501;state=clear:app=fx\x1b\\");
+}
+
 /// With --clipboard-read a live read asks the local terminal; old ones
 /// from a catch-up don't, and without the flag it is never asked.
 #[test]

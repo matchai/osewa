@@ -444,6 +444,36 @@ fn status_notice() {
     }
 }
 
+/// A status is rebuilt from its fields: one the protocol would ignore isn't
+/// sent, and fields that break its rules are left out, so nothing from the
+/// host ends or extends the sequence.
+#[test]
+fn status_set_follows_the_protocol() {
+    let status = |state: &str| wire::EventMsg { state: state.into(), ..wire::EventMsg::kind(wire::EVENT_STATUS) };
+    let set = |e: wire::EventMsg| status_set(&e).map(|b| String::from_utf8(b).unwrap());
+    let full = wire::EventMsg { id: "build/test".into(), app: "cargo".into(), msg: "Running".into(), progress: Some(40), ..status("blocked") };
+    assert_eq!(set(full.clone()).unwrap(), "\x1b]7501;state=blocked:id=build/test:progress=40:app=cargo:msg=UnVubmluZw==\x1b\\");
+    for (name, e) in [
+        ("unknown state", status("paused")),
+        ("bad id", wire::EventMsg { id: "a:b".into(), ..status("done") }),
+        ("empty id segment", wire::EventMsg { id: "a//b".into(), ..status("done") }),
+        ("deep id", wire::EventMsg { id: ["a"; 9].join("/"), ..status("done") }),
+    ] {
+        assert_eq!(set(e), None, "{name}");
+    }
+    let dropped = wire::EventMsg { app: "fx;x".into(), progress: Some(101), ..status("blocked") };
+    assert_eq!(set(dropped).unwrap(), "\x1b]7501;state=blocked\x1b\\");
+    let finished = wire::EventMsg { state: "done".into(), ..full };
+    assert_eq!(set(finished).unwrap(), "\x1b]7501;state=done:id=build/test:app=cargo:msg=UnVubmluZw==\x1b\\", "progress only while busy");
+    let controls = wire::EventMsg { msg: "a\x1b\\b\x07".into(), ..status("done") };
+    assert_eq!(set(controls).unwrap(), "\x1b]7501;state=done:msg=YVxi\x1b\\");
+    let long = wire::EventMsg { msg: "é".repeat(1100), ..status("done") };
+    let encoded = set(long).unwrap();
+    let msg = encoded.trim_start_matches("\x1b]7501;state=done:msg=").trim_end_matches("\x1b\\");
+    use base64::Engine as _;
+    assert_eq!(base64::engine::general_purpose::STANDARD.decode(msg).unwrap().len(), 2048, "cut to the protocol's limit");
+}
+
 /// Terminals that keep images, with 10x20 pixel cells.
 fn image_term(cols: usize, rows: usize) -> Terminal {
     let mut t = Terminal::new(cols, rows, Options { images: true, ..Default::default() }).unwrap();

@@ -560,7 +560,8 @@ fn live_recovers_from_blackhole() {
 }
 
 /// A program reporting blocked (OSC 7501) gets a notice in osewa attach,
-/// and nothing with --quiet; the OSC itself never reaches the terminal.
+/// and nothing with --quiet; either way the terminal gets the status as an
+/// OSC 7501 osewa builds itself.
 #[test]
 fn live_status_notice() {
     let h = LiveHost::new();
@@ -583,7 +584,8 @@ fn live_status_notice() {
             std::thread::sleep(Duration::from_millis(200));
             assert!(!a.out.string().contains("claude-code: blocked"), "--quiet showed the notice");
         }
-        assert!(!a.out.string().contains("7501"), "OSC 7501 forwarded");
+        wait_for(&a.out, "\x1b]7501;state=blocked:app=claude-code:msg=QXBwbHk/\x1b\\");
+        assert!(!a.out.string().contains("QXBwbHk/\x07"), "the program's own OSC 7501 passed through");
         a.stdin.close();
         a.code();
     }

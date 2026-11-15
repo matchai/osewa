@@ -507,6 +507,9 @@ impl Ui {
     pub fn event(&mut self, e: &wire::EventMsg, live: bool) {
         if e.kind == wire::EVENT_STATUS {
             // Only live ones: a status from a catch-up is old news.
+            if let Some(report) = status_set(e).filter(|_| live) {
+                self.write(&report);
+            }
             let quiet_typing = self.typed_at.is_none_or(|at| at.elapsed() >= TYPING_QUIET);
             if live && !self.quiet && (e.state == "blocked" || e.state == "done") && quiet_typing {
                 let who = if e.app.is_empty() { "program".to_string() } else { printable(&e.app) };

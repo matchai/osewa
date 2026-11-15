@@ -426,7 +426,7 @@ EVENT JSON, by `kind`:
 | `notify` | `title` (may be empty), `msg`: a desktop notification (OSC 9, OSC 777) |
 
 Events are log records, so they are ordered exactly with output. Clients fire
-effects (`bell`, `clipboard`, `notify`) only for records received live, never
+effects (`bell`, `clipboard`, `notify`, `status`) only for records received live, never
 during a snapshot or a resume catch-up.
 
 ## Idle sessions
