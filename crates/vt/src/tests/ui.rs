@@ -99,9 +99,8 @@ fn notify_events_notify_locally() {
     assert_eq!(out.string(), "\x1b]9;done\x1b\\\x1b]777;notify;CI, main;all\\ green\x1b\\");
 }
 
-/// A live status reaches the local terminal as OSC 7501, so it can show the
-/// program as it would a local one, even with notices off; catch-up ones
-/// don't.
+/// A live status reaches the local terminal as OSC 7501, even with notices
+/// off; catch-up ones don't, nor one that would end or extend the sequence.
 #[test]
 fn status_events_report_locally() {
     use osewa_mirror::{Predictor, PredictorConfig};
@@ -110,6 +109,9 @@ fn status_events_report_locally() {
     let status = |state: &str| osewa_wire::EventMsg { state: state.into(), app: "fx".into(), ..osewa_wire::EventMsg::kind(osewa_wire::EVENT_STATUS) };
     a.m.event(&status("done"), false).unwrap();
     assert_eq!(out.string(), "", "a catch-up status was reported");
+    a.m.event(&status("done:x=1"), true).unwrap();
+    a.m.event(&osewa_wire::EventMsg { app: "fx\x1b\\".into(), ..status("done") }, true).unwrap();
+    assert_eq!(out.string(), "", "a status that breaks out of the sequence was reported");
     a.m.event(&osewa_wire::EventMsg { msg: "Apply?".into(), ..status("blocked") }, true).unwrap();
     a.m.event(&status("clear"), true).unwrap();
     assert_eq!(out.string(), "\x1b]7501;state=blocked:app=fx:msg=QXBwbHk/\x1b\\\x1b]7501;state=clear:app=fx\x1b\\");
